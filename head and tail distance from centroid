@@ -1,0 +1,139 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+use MaterialsScript qw(:all);
+
+# Trajectory file containing the micelle
+my $trajectory = $Documents{"laphs70w12k_20ns.xtd"};
+
+# Begin with this frame number
+my $startFrame = 10100;
+
+# Define the output files for sulfur and specific carbon atom distances
+my $sulfurDistancesTable = Documents->New("SulfurAtomDistances.std");
+$sulfurDistancesTable->ColumnHeading(0) = "Frame";
+$sulfurDistancesTable->ColumnHeading(1) = "x";
+$sulfurDistancesTable->ColumnHeading(2) = "y";
+$sulfurDistancesTable->ColumnHeading(3) = "z";
+
+my $carbonDistancesTable = Documents->New("C28AtomDistances.std");
+$carbonDistancesTable->ColumnHeading(0) = "Frame";
+$carbonDistancesTable->ColumnHeading(1) = "x";
+$carbonDistancesTable->ColumnHeading(2) = "y";
+$carbonDistancesTable->ColumnHeading(3) = "z";
+
+# Specify the carbon identifier to filter
+my $carbonIdentifier = 'C28';
+
+# Loop over frames, calculate and record micelle dimensions
+for (my $frame = $startFrame; $frame <= $trajectory->Trajectory->NumFrames; $frame++) {
+    $trajectory->Trajectory->CurrentFrame = $frame;
+
+    # Get all atoms in the current frame
+    my $atoms = $trajectory->UnitCell->Atoms;
+    
+    # Collect sulfur atoms
+    my @sulfur_atoms;
+    foreach my $atom (@$atoms) {
+        if ($atom->ElementSymbol eq 'S') {
+            push @sulfur_atoms, $atom;
+        }
+    }
+
+    # Number of atoms containing sulfur
+    my $numSulfurAtoms = scalar @sulfur_atoms;
+
+    # If sulfur atoms are found, process them
+    if ($numSulfurAtoms > 0) {
+        # Calculate the center of mass (centroid) of the micelle for sulfur atoms
+        my ($cx, $cy, $cz) = (0, 0, 0);
+        my $totalMass = 0;
+
+        foreach my $atom (@sulfur_atoms) {
+            my $mass = $atom->Mass;
+            $cx += $atom->X * $mass;
+            $cy += $atom->Y * $mass;
+            $cz += $atom->Z * $mass;
+            $totalMass += $mass;
+        }
+
+        $cx /= $totalMass;
+        $cy /= $totalMass;
+        $cz /= $totalMass;
+
+        # Calculate distances from centroid and store them
+        foreach my $atom (@sulfur_atoms) {
+            my $dx = $atom->X - $cx;
+            my $dy = $atom->Y - $cy;
+            my $dz = $atom->Z - $cz;
+            my $distance = sqrt($dx**2 + $dy**2 + $dz**2);
+
+            my $sulfurRow = $sulfurDistancesTable->RowCount;
+            $sulfurDistancesTable->Cell($sulfurRow, 0) = $frame;
+            $sulfurDistancesTable->Cell($sulfurRow, 1) = $atom->X;
+            $sulfurDistancesTable->Cell($sulfurRow, 2) = $atom->Y;
+            $sulfurDistancesTable->Cell($sulfurRow, 3) = $atom->Z;
+        }
+    }
+
+    # Collect carbon atoms with specific identifier
+    my @carbon_atoms;
+    foreach my $atom (@$atoms) {
+        if ($atom->ElementSymbol eq 'C' && $atom->Name eq $carbonIdentifier) {
+            push @carbon_atoms, $atom;
+        }
+    }
+
+    # Number of atoms containing carbon with identifier C28
+    my $numCarbonAtoms = scalar @carbon_atoms;
+
+    # If carbon atoms are found, process them
+    if ($numCarbonAtoms > 0) {
+        # Calculate the center of mass (centroid) of the micelle for carbon atoms
+        my ($cx, $cy, $cz) = (0, 0, 0);
+        my $totalMass = 0;
+
+        foreach my $atom (@carbon_atoms) {
+            my $mass = $atom->Mass;
+            $cx += $atom->X * $mass;
+            $cy += $atom->Y * $mass;
+            $cz += $atom->Z * $mass;
+            $totalMass += $mass;
+        }
+
+        $cx /= $totalMass;
+        $cy /= $totalMass;
+        $cz /= $totalMass;
+
+        # Calculate distances from centroid and store them
+        foreach my $atom (@carbon_atoms) {
+            my $dx = $atom->X - $cx;
+            my $dy = $atom->Y - $cy;
+            my $dz = $atom->Z - $cz;
+            my $distance = sqrt($dx**2 + $dy**2 + $dz**2);
+
+            my $carbonRow = $carbonDistancesTable->RowCount;
+            $carbonDistancesTable->Cell($carbonRow, 0) = $frame;
+            $carbonDistancesTable->Cell($carbonRow, 1) = $atom->X;
+            $carbonDistancesTable->Cell($carbonRow, 2) = $atom->Y;
+            $carbonDistancesTable->Cell($carbonRow, 3) = $atom->Z;
+        }
+    }
+}
+
+# Save the study tables
+$sulfurDistancesTable->Save;
+$carbonDistancesTable->Save;
+
+print "Sulfur atom results have been saved to SulfurAtomDistances.std\n";
+print "C28 carbon atom results have been saved to C28AtomDistances.std\n";
+
+# Subroutine to calculate average
+sub average {
+    my @array = @_;
+    return 0 unless @array;
+    my $total = 0;
+    $total += $_ for @array;
+    return $total / @array;
+}
